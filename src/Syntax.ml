@@ -41,7 +41,29 @@ module Expr =
        Takes a state and an expression, and returns the value of the expression in 
        the given state.
     *)
-    let eval _ = failwith "Not implemented yet"
+    let rec eval_binop op x y =
+      match op with
+        | "+" -> x + y
+        | "-" -> x - y
+        | "*" -> x * y
+        | "/" -> x / y
+        | "%" -> x mod y
+        | "&&" -> if x == 0 || y == 0 then 0 else 1
+        | "!!" -> if x == 0 && y == 0 then 0 else 1
+        | "<" -> if x < y then 1 else 0
+        | "<=" -> if x <= y b then 1 else 0
+        | ">" -> if x > y then 1 else 0
+        | ">=" -> if x >= y then 1 else 0
+        | "==" -> if x == y then 1 else 0
+        | "!=" -> if x != y then 1 else 0 
+
+    let rec eval st expr = 
+      match expr with
+      | Const c -> c
+      | Var v -> st v
+      | Binop (op, a, b) -> 
+        let x = eval s a and y = eval s b in
+        eval_binop op x y
 
   end
                     
@@ -65,6 +87,17 @@ module Stmt =
 
        Takes a configuration and a statement, and returns another configuration
     *)
-    let eval _ = failwith "Not implemented yet"
+    let rec eval ((s, i, o) : config) stmt =
+      match stmt with
+      | Assign(x, e) -> ((Expr.update x (Expr.eval s expr) s), i, o)
+      | Read x -> (
+        match i with 
+        | z :: i_tail -> ((Expr.update x z s), i_tail, o)
+        | [] -> failwith "[READ]: Empty input stream"
+      )
+      | Write e -> (s, i, o @ [(Expr.eval s e)])
+      | Seq (a, b) -> 
+        let a_conf = eval (s, i, o) a in
+        eval a_conf b
                                                          
   end
