@@ -43,26 +43,27 @@ module Expr =
     *)
     let rec eval_binop op x y =
       match op with
-        | "+" -> x + y
-        | "-" -> x - y
-        | "*" -> x * y
-        | "/" -> x / y
-        | "%" -> x mod y
-        | "&&" -> if x == 0 || y == 0 then 0 else 1
-        | "!!" -> if x == 0 && y == 0 then 0 else 1
-        | "<" -> if x < y then 1 else 0
-        | "<=" -> if x <= y b then 1 else 0
-        | ">" -> if x > y then 1 else 0
-        | ">=" -> if x >= y then 1 else 0
-        | "==" -> if x == y then 1 else 0
-        | "!=" -> if x != y then 1 else 0 
+      | "+" -> x + y
+      | "-" -> x - y
+      | "*" -> x * y
+      | "/" -> x / y
+      | "%" -> x mod y
+      | "&&" -> if x == 0 || y == 0 then 0 else 1
+      | "!!" -> if x == 0 && y == 0 then 0 else 1
+      | "<" -> if x < y then 1 else 0
+      | "<=" -> if x <= y then 1 else 0
+      | ">" -> if x > y then 1 else 0
+      | ">=" -> if x >= y then 1 else 0
+      | "==" -> if x == y then 1 else 0
+      | "!=" -> if x != y then 1 else 0
+      | _ -> failwith "[EVAL_BINOP]: Unknown binary operator"
 
-    let rec eval st expr = 
+    let rec eval stat expr = 
       match expr with
       | Const c -> c
-      | Var v -> st v
+      | Var v -> stat v
       | Binop (op, a, b) -> 
-        let x = eval s a and y = eval s b in
+        let x = eval stat a and y = eval stat b in
         eval_binop op x y
 
   end
@@ -89,7 +90,7 @@ module Stmt =
     *)
     let rec eval ((s, i, o) : config) stmt =
       match stmt with
-      | Assign(x, e) -> ((Expr.update x (Expr.eval s expr) s), i, o)
+      | Assign(x, e) -> ((Expr.update x (Expr.eval s e) s), i, o)
       | Read x -> (
         match i with 
         | z :: i_tail -> ((Expr.update x z s), i_tail, o)

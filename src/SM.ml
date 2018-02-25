@@ -22,9 +22,9 @@ type config = int list * Syntax.Stmt.config
      val eval : config -> prg -> config
 
    Takes a configuration and a program, and returns a configuration as a result
- *)                         
-let rec eval conf prog = 
-	let perform_inst inst ((st, (s, i, o)) : config) = 
+ *)   
+
+let perform_inst inst ((st, (s, i, o)) : config) = 
 		match inst with
 		| BINOP op -> (
         match st with 
@@ -46,8 +46,10 @@ let rec eval conf prog =
 		| ST x -> (
       match st with
       | z :: st_tail -> (st_tail, (Syntax.Expr.update x z s, i, o))
-      | _ -> "[ST]: Too few arguments on stack"
+      | _ -> failwith "[ST]: Too few arguments on stack"
     )
+                      
+let rec eval conf prog = 
 	match prog with
 	| [] -> conf	
 	| inst :: tail -> eval (perform_inst inst conf) tail
@@ -60,12 +62,13 @@ let rec eval conf prog =
    stack machine
  *)
 
+let rec compile_expr (expr : Syntax.Expr.t) = 
+  match expr with
+  | Const n -> [CONST n]
+  | Var x -> [LD x]
+  | Binop (op, x, y) -> compile_expr x @ compile_expr y @ [BINOP op]
+
 let rec compile (stmt : Syntax.Stmt.t) =
-	let rec compile_expr (expr : Syntax.Expr.t) = 
-		match expr with
-		| Const n -> [CONST n]
-		| Var x -> [LD x]
-		| Binop (op, x, y) -> compile_expr x @ compile_expr y @ [BINOP op]
 	match stmt with
   | Assign (x, e) -> (compile_expr e) @ [ST x]
 	| Read x -> READ :: [ST x]
