@@ -50,9 +50,9 @@ let perform_inst inst ((st, (s, i, o)) : config) =
   )
                       
 let rec eval conf prog = 
-	match prog with
-	| [] -> conf	
-	| inst :: tail -> eval (perform_inst inst conf) tail
+  match prog with
+  | [] -> conf	
+  | inst :: tail -> eval (perform_inst inst conf) tail
 
 (* Stack machine compiler
 
@@ -69,8 +69,8 @@ let rec compile_expr (expr : Syntax.Expr.t) =
   | Binop (op, x, y) -> compile_expr x @ compile_expr y @ [BINOP op]
 
 let rec compile (stmt : Syntax.Stmt.t) =
-	match stmt with
+  match stmt with
   | Assign (x, e) -> (compile_expr e) @ [ST x]
-	| Read x -> READ :: [ST x]
-	| Write e -> (compile_expr e) @ [WRITE]
-	| Seq (a, b) -> (compile a) @ (compile b)
+  | Read x -> READ :: [ST x]
+  | Write e -> (compile_expr e) @ [WRITE]
+  | Seq (a, b) -> (compile a) @ (compile b)
