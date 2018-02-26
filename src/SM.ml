@@ -25,29 +25,29 @@ type config = int list * Syntax.Stmt.config
  *)   
 
 let perform_inst inst ((st, (s, i, o)) : config) = 
-		match inst with
-		| BINOP op -> (
-        match st with 
-	      | y :: x :: st_tail -> ((Syntax.Expr.eval_binop op x y) :: st_tail, (s, i ,o)) 
-		    | _ -> failwith "[BINOP]: Too few arguments on stack"		
-    )
-		| CONST n -> (n :: st, (s, i, o))
-		| READ -> (
-      match i with
-      | z :: i_tail -> (z :: st, (s, i_tail, o))
-      | _ -> failwith "[READ]: Too few arguments in input stream"
-    )
-		| WRITE -> (
-      match st with
-      | z :: st_tail -> (st_tail, (s, i, o @ [z]))
-      | _ -> failwith "[WRITE]: Too few arguments on stack"
-    )
-		| LD x -> ((s x) :: st, (s, i, o))
-		| ST x -> (
-      match st with
-      | z :: st_tail -> (st_tail, (Syntax.Expr.update x z s, i, o))
-      | _ -> failwith "[ST]: Too few arguments on stack"
-    )
+  match inst with
+  | BINOP op -> (
+    match st with 
+    | y :: x :: st_tail -> ((Syntax.Expr.eval_binop op x y) :: st_tail, (s, i ,o)) 
+    | _ -> failwith "[BINOP]: Too few arguments on stack"		
+  )
+  | CONST n -> (n :: st, (s, i, o))
+  | READ -> (
+    match i with
+    | z :: i_tail -> (z :: st, (s, i_tail, o))
+    | _ -> failwith "[READ]: Too few arguments in input stream"
+  )
+  | WRITE -> (
+    match st with
+    | z :: st_tail -> (st_tail, (s, i, o @ [z]))
+    | _ -> failwith "[WRITE]: Too few arguments on stack"
+  )
+  | LD x -> ((s x) :: st, (s, i, o))
+  | ST x -> (
+    match st with
+    | z :: st_tail -> (st_tail, (Syntax.Expr.update x z s, i, o))
+    | _ -> failwith "[ST]: Too few arguments on stack"
+  )
                       
 let rec eval conf prog = 
 	match prog with
