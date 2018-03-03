@@ -44,7 +44,30 @@ module Expr =
        Takes a state and an expression, and returns the value of the expression in 
        the given state.
     *)
-    let eval _ = failwith "Not implemented yet"
+    let rec eval_binop op x y =
+      match op with
+      | "+" -> x + y
+      | "-" -> x - y
+      | "*" -> x * y
+      | "/" -> x / y
+      | "%" -> x mod y
+      | "&&" -> if x == 0 || y == 0 then 0 else 1
+      | "!!" -> if x == 0 && y == 0 then 0 else 1
+      | "<" -> if x < y then 1 else 0
+      | "<=" -> if x <= y then 1 else 0
+      | ">" -> if x > y then 1 else 0
+      | ">=" -> if x >= y then 1 else 0
+      | "==" -> if x == y then 1 else 0
+      | "!=" -> if x != y then 1 else 0
+      | _ -> failwith "[EVAL_BINOP]: Unknown binary operator"
+
+    let rec eval stat expr = 
+      match expr with
+      | Const c -> c
+      | Var v -> stat v
+      | Binop (op, a, b) -> 
+        let x = eval stat a and y = eval stat b in
+        eval_binop op x y
 
     (* Expression parser. You can use the following terminals:
 
@@ -52,8 +75,24 @@ module Expr =
          DECIMAL --- a decimal constant [0-9]+ as a string
    
     *)
+    let make_parser_ops ops = List.map(fun op -> ((ostap ($(op))), fun x y -> Binop(op, x, y))) ops
+
     ostap (
-      parse: empty {failwith "Not implemented yet"}
+      parse: !(Ostap.Util.expr
+        (fun x -> x)
+        [|
+          `Lefta, make_parser_ops ["!!"];
+          `Lefta, make_parser_ops ["&&"];
+          `Nona,  make_parser_ops [">"; ">="; "<"; "<="; "=="; "!="];
+          `Lefta, make_parser_ops ["+"; "-"];
+          `Lefta, make_parser_ops ["*"; "/"; "%"]
+        |]
+        primary
+      );
+      primary:
+          x:IDENT   {Var    x}
+        | x:DECIMAL {Const  x}
+        | -"(" parse -")"
     )
 
   end

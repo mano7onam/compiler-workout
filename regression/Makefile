@@ -12,3 +12,4 @@ $(TESTS): %: %.expr
 
 clean:
 	rm -f test*.log *.s *~ $(TESTS)
+	

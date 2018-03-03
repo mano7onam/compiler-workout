@@ -42,5 +42,3 @@ let run p i = let (_, (_, _, o)) = eval ([], (Expr.empty, i, [])) p in o
    stack machine
  *)
 let compile _ = failwith "Not yet implemented"
-
-                         
