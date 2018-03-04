@@ -44,6 +44,7 @@ module Expr =
        Takes a state and an expression, and returns the value of the expression in 
        the given state.
     *)
+
     let rec eval_binop op x y =
       match op with
       | "+" -> x + y
@@ -75,6 +76,7 @@ module Expr =
          DECIMAL --- a decimal constant [0-9]+ as a string
    
     *)
+
     let make_parser_ops ops = List.map(fun op -> ((ostap ($(op))), fun a b -> Binop(op, a, b))) ops
 
     ostap (
@@ -117,6 +119,7 @@ module Stmt =
 
        Takes a configuration and a statement, and returns another configuration
     *)
+
     let rec eval ((s, i, o) : config) stmt =
       match stmt with
       | Assign(x, e) -> ((Expr.update x (Expr.eval s e) s), i, o)
