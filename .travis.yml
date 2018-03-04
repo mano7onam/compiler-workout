@@ -6,3 +6,4 @@ env:
   - FORK_USER=anlun FORK_BRANCH=patch-1 OCAML_VERSION=4.06
 os:
   - linux
+  
