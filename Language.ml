@@ -77,7 +77,7 @@ module Expr =
    
     *)
 
-    let make_parser_ops ops = List.map (fun op -> ostap ($(op)), fun a b -> Binop(op, a, b)) ops
+    let make_parser_ops ops = List.map(fun op -> ((ostap ($(op))), fun a b -> Binop(op, a, b))) ops
 
     ostap (
       parse: !(Ostap.Util.expr
@@ -85,15 +85,15 @@ module Expr =
         [|
           `Lefta, make_parser_ops ["!!"];
           `Lefta, make_parser_ops ["&&"];
-          `Nona , make_parser_ops [">="; ">"; "<="; "<"; "=="; "!="];
+          `Nona,  make_parser_ops [">"; ">="; "<"; "<="; "=="; "!="];
           `Lefta, make_parser_ops ["+"; "-"];
-          `Lefta, make_parser_ops ["*"; "/"; "%"];
+          `Lefta, make_parser_ops ["*"; "/"; "%"]
         |]
         primary
       );
-      primary: 
-          v:IDENT   {Var v} 
-        | c:DECIMAL {Const c} 
+      primary:
+          v:IDENT   {Var    v}
+        | c:DECIMAL {Const  c}
         | -"(" parse -")"
     )
 
@@ -143,9 +143,9 @@ module Stmt =
         primary
       );
       primary: 
-          -"read" -"(" x:IDENT -")"           {Read  x}
-        | -"write" -"(" e:!(Expr.parse) -")"  {Write e}
-        | x:IDENT -":=" e:!(Expr.parse)       {Assign(x, e)}
+          "read" "(" x:IDENT ")"          {Read  x}
+        | "write" "(" e:!(Expr.parse) ")" {Write e}
+        | x:IDENT ":=" e:!(Expr.parse)    {Assign(x, e)}
     )
       
   end
