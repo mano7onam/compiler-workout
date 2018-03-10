@@ -86,26 +86,34 @@ let rec compile env = function
     | CONST n ->
       let s, env = env#allocate in
       env, [Mov(L n, s)]
+    
     | WRITE ->
       let s, env = env#pop in
       env, [Push s; Call "Lwrite"; Pop eax]
+    
     | READ ->
       let x, env = env#allocate in 
       env, [Call "Lread"; Mov (eax, x)]
+    
     | LD x ->
       let s, env = (env#global x)#allocate in
       env, [Mov(M ("global_" ^ x), s)]
+    
     | ST x ->
       let s, env = (env#global x)#pop in
       env, [Mov(s, M ("global_" ^ x))]
+    
     | BINOP op ->
       let a, b, env = env#pop2 in
-      let res, env = env#allocate in
-      match op with
-      | "+" -> env, [
+      let res, env = env#allocate in      
+      let plus_minus_mult op = 
+        [
           Mov (a, eax); Mov (b, edx); 
-          Binop ("+", eax, edx); Mov (edx, res)
-        ]
+          Binop (op, eax, edx); Mov (edx, res)
+        ] 
+      in 
+      match op with 
+      | "+" | "-" | "*" -> env, plus_minus_mult op
       | _ -> failwith("Binop not supported yet")
     | _ -> failwith("Not yet supported")
   in 
