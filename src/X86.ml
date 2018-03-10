@@ -74,13 +74,34 @@ let show instr =
 open SM
 
 (* Symbolic stack machine evaluator
-
      compile : env -> prg -> env * instr list
-
    Take an environment, a stack machine program, and returns a pair --- the updated environment and the list
    of x86 instructions
 *)
-let compile env code = failwith "Not yet implemented"
+let rec compile env = function
+| [] -> env, []
+| instr :: code' ->
+  let env, asm = 
+    match instr with
+    | CONST n ->
+      let s, env = env#allocate in
+      env, [Mov(L n, s)]
+    | WRITE ->
+      let s, env = env#pop in
+      env, [Push s; Call "Lwrite"; Pop eax]
+    | READ ->
+      let x, env = env#allocate in 
+      env, [Call "Lread"; Mov (eax, x)]
+    | LD x ->
+      let s, env = (env#global x)#allocate in
+      env, [Mov(M ("global_" ^ x), s)]
+    | ST x ->
+      let s, env = (env#global x)#pop in
+      env, [Mov(s, M ("global_" ^ x))]
+    | _ -> failwith("Not yet supported")
+  in 
+  let env, asm' = compile env code' in
+  env, asm @ asm'
 
 (* A set of strings *)           
 module S = Set.Make (String)
@@ -99,10 +120,12 @@ class env =
     method allocate =    
       let x, n =
 	let rec allocate' = function
-	| []                            -> ebx     , 0
-	| (S n)::_                      -> S (n+1) , n+1
-	| (R n)::_ when n < num_of_regs -> R (n+1) , stack_slots
-	| _                             -> S 0     , 1
+	| []                               -> ebx     , 0
+  (* S n is allocated -> n+1 stack positions already allocated *)
+	| (S n)::_                         -> S (n+1) , n+1
+  (* Not allowed to allocate R num_of_regs*)
+	| (R n)::_ when n < num_of_regs    -> R (n+1) , stack_slots
+	| _                                -> S 0     , 1
 	in
 	allocate' stack
       in
@@ -164,5 +187,4 @@ let build stmt name =
   Printf.fprintf outf "%s" (genasm stmt);
   close_out outf;
   let inc = try Sys.getenv "RC_RUNTIME" with _ -> "../runtime" in
-  Sys.command (Printf.sprintf "gcc -m32 -o %s %s/runtime.o %s.s" name inc name)
- 
+Sys.command (Printf.sprintf "gcc -m32 -o %s %s/runtime.o %s.s" name inc name)

@@ -19,12 +19,9 @@ type prg = insn list
 type config = int list * Stmt.config
 
 (* Stack machine interpreter
-
      val eval : config -> prg -> config
-
    Takes a configuration and a program, and returns a configuration as a result
  *)                         
-<<<<<<< HEAD
 let perform_inst inst ((st, (s, i, o)) : config) = 
   match inst with
   | BINOP op -> (
@@ -56,42 +53,21 @@ let rec eval conf prog =
   | inst :: tail -> eval (perform_inst inst conf) tail
 
 (* Top-level evaluation
-
      val run : prg -> int list -> int list
-
    Takes an input stream, a program, and returns an output stream this program calculates
 *)
 let run p i = let (_, (_, _, o)) = eval ([], (Expr.empty, i, [])) p in o
-=======
-let rec eval ((stack, ((st, i, o) as c)) as conf) = function
-| [] -> conf
-| insn :: prg' ->
-   eval 
-     (match insn with
-      | BINOP op -> let y::x::stack' = stack in (Expr.to_func op x y :: stack', c)
-      | READ     -> let z::i'        = i     in (z::stack, (st, i', o))
-      | WRITE    -> let z::stack'    = stack in (stack', (st, i, o @ [z]))
-      | CONST i  -> (i::stack, c)
-      | LD x     -> (st x :: stack, c)
-      | ST x     -> let z::stack'    = stack in (stack', (Expr.update x z st, i, o))
-     ) prg'
->>>>>>> a02d2f10f0fb937b9c20ce1bc554e66439d1508e
 
 (* Top-level evaluation
-
      val run : prg -> int list -> int list
-
-   Takes a program, an input stream, and returns an output stream this program calculates
+   Takes an input stream, a program, and returns an output stream this program calculates
 *)
 let run p i = let (_, (_, _, o)) = eval ([], (Expr.empty, i, [])) p in o
 
 (* Stack machine compiler
-
      val compile : Language.Stmt.t -> prg
-
    Takes a program in the source language and returns an equivalent program for the
    stack machine
-<<<<<<< HEAD
  *)
 let rec compile_expr (expr : Language.Expr.t) = 
   match expr with
@@ -104,18 +80,4 @@ let rec compile (stmt : Language.Stmt.t) =
   | Assign (x, e) -> (compile_expr e) @ [ST x]
   | Read x -> READ :: [ST x]
   | Write e -> (compile_expr e) @ [WRITE]
-  | Seq (a, b) -> (compile a) @ (compile b)
-=======
-*)
-let rec compile =
-  let rec expr = function
-  | Expr.Var   x          -> [LD x]
-  | Expr.Const n          -> [CONST n]
-  | Expr.Binop (op, x, y) -> expr x @ expr y @ [BINOP op]
-  in
-  function
-  | Stmt.Seq (s1, s2)  -> compile s1 @ compile s2
-  | Stmt.Read x        -> [READ; ST x]
-  | Stmt.Write e       -> expr e @ [WRITE]
-  | Stmt.Assign (x, e) -> expr e @ [ST x]
->>>>>>> a02d2f10f0fb937b9c20ce1bc554e66439d1508e
+| Seq (a, b) -> (compile a) @ (compile b)

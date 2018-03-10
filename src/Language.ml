@@ -38,7 +38,6 @@ module Expr =
     let update x v s = fun y -> if x = y then v else s y
 
     (* Expression evaluator
-
           val eval : state -> t -> int
  
        Takes a state and an expression, and returns the value of the expression in 
@@ -69,35 +68,8 @@ module Expr =
       | Binop (op, a, b) -> 
         let x = eval stat a and y = eval stat b in
         eval_binop op x y
-                                                      
-    let to_func op =
-      let bti   = function true -> 1 | _ -> 0 in
-      let itb b = b <> 0 in
-      let (|>) f g   = fun x y -> f (g x y) in
-      match op with
-      | "+"  -> (+)
-      | "-"  -> (-)
-      | "*"  -> ( * )
-      | "/"  -> (/)
-      | "%"  -> (mod)
-      | "<"  -> bti |> (< )
-      | "<=" -> bti |> (<=)
-      | ">"  -> bti |> (> )
-      | ">=" -> bti |> (>=)
-      | "==" -> bti |> (= )
-      | "!=" -> bti |> (<>)
-      | "&&" -> fun x y -> bti (itb x && itb y)
-      | "!!" -> fun x y -> bti (itb x || itb y)
-      | _    -> failwith (Printf.sprintf "Unknown binary operator %s" op)    
-    
-    let rec eval st expr =      
-      match expr with
-      | Const n -> n
-      | Var   x -> st x
-      | Binop (op, x, y) -> to_func op (eval st x) (eval st y)
 
     (* Expression parser. You can use the following terminals:
-
          IDENT   --- a non-empty identifier a-zA-Z[a-zA-Z0-9_]* as a string
          DECIMAL --- a decimal constant [0-9]+ as a string
    
@@ -121,28 +93,6 @@ module Expr =
           v:IDENT   {Var v} 
         | c:DECIMAL {Const c} 
         | -"(" parse -")"
-
-    ostap (                                      
-      parse:
-	  !(Ostap.Util.expr 
-             (fun x -> x)
-	     (Array.map (fun (a, s) -> a, 
-                           List.map  (fun s -> ostap(- $(s)), (fun x y -> Binop (s, x, y))) s
-                        ) 
-              [|                
-		`Lefta, ["!!"];
-		`Lefta, ["&&"];
-		`Nona , ["=="; "!="; "<="; "<"; ">="; ">"];
-		`Lefta, ["+" ; "-"];
-		`Lefta, ["*" ; "/"; "%"];
-              |] 
-	     )
-	     primary);
-      
-      primary:
-        n:DECIMAL {Const n}
-      | x:IDENT   {Var x}
-      | -"(" parse -")"
     )
 
   end
@@ -162,9 +112,7 @@ module Stmt =
     type config = Expr.state * int list * int list 
 
     (* Statement evaluator
-
           val eval : config -> t -> config
-
        Takes a configuration and a statement, and returns another configuration
     *)
 
@@ -194,24 +142,6 @@ module Stmt =
           -"read" -"(" x:IDENT -")"           {Read  x}
         | -"write" -"(" e:!(Expr.parse) -")"  {Write e}
         | x:IDENT -":=" e:!(Expr.parse)       {Assign(x, e)}
-
-    let rec eval ((st, i, o) as conf) stmt =
-      match stmt with
-      | Read    x       -> (match i with z::i' -> (Expr.update x z st, i', o) | _ -> failwith "Unexpected end of input")
-      | Write   e       -> (st, i, o @ [Expr.eval st e])
-      | Assign (x, e)   -> (Expr.update x (Expr.eval st e) st, i, o)
-      | Seq    (s1, s2) -> eval (eval conf s1) s2
-                                
-    (* Statement parser *)
-    ostap (
-      parse:
-        s:stmt ";" ss:parse {Seq (s, ss)}
-      | stmt;
-      stmt:
-        "read" "(" x:IDENT ")"          {Read x}
-      | "write" "(" e:!(Expr.parse) ")" {Write e}
-      | x:IDENT ":=" e:!(Expr.parse)    {Assign (x, e)}            
-
     )
       
   end
@@ -222,13 +152,11 @@ module Stmt =
 type t = Stmt.t    
 
 (* Top-level evaluator
-
      eval : t -> int list -> int list
-
    Takes a program and its input stream, and returns the output stream
 *)
 let eval p i =
   let _, _, o = Stmt.eval (Expr.empty, i, []) p in o
 
 (* Top-level parser *)
-let parse = Stmt.parse                                                     
+let parse = Stmt.parse
