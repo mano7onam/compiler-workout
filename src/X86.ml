@@ -98,6 +98,15 @@ let rec compile env = function
     | ST x ->
       let s, env = (env#global x)#pop in
       env, [Mov(s, M ("global_" ^ x))]
+    | BINOP op ->
+      let a, b, env = env#pop2 in
+      let res, env = env#allocate in
+      match op with
+      | "+" -> env, [
+          Mov (a, eax); Mov (b, edx); 
+          Binop ("+", eax, edx); Mov (edx, res)
+        ]
+      | _ -> failwith("Binop not supported yet")
     | _ -> failwith("Not yet supported")
   in 
   let env, asm' = compile env code' in

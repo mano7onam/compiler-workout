@@ -5,3 +5,6 @@
 *.cmi
 *.cmx
 *.o
+*.s
+*src/test*
+*regression/expressions/generated*
