@@ -1,6 +1,7 @@
 *.log
 *.depend
 *.opt
+*~
 *.cmi
 *.cmx
 *.o
