@@ -108,8 +108,8 @@ let rec compile env = function
       let res, env = env#allocate in      
       let plus_minus_mult op = 
         [
-          Mov (a, eax); Mov (b, edx);
-          Binop (op, eax, edx); Mov (edx, res)
+          Mov (a, edi); Mov (b, edx);
+          Binop (op, edi, edx); Mov (edx, res)
         ] 
       in 
       let div_rest op = match op with
@@ -128,9 +128,9 @@ let rec compile env = function
       in
       let comparsions op = 
         [
-          Mov (a, edi); Mov (b, edx);
+          Mov (a, edi);
           Binop ("^", eax, eax);
-          Binop ("cmp", edi, edx);
+          Binop ("cmp", edi, b);
           Set (cmp_op_to_asm_cmd op, "%al");
           Mov (eax, res);
         ]
