@@ -97,11 +97,19 @@ let rec compile env = function
     
     | LD x ->
       let s, env = (env#global x)#allocate in
-      env, [Mov (M ("global_" ^ x), s)]
+      (
+        match s with
+        | S _ -> env, [Mov (M ("global_" ^ x), eax); Mov (eax, s)]
+        | _ -> env, [Mov (M ("global_" ^ x), s)]
+      )
     
     | ST x ->
       let s, env = (env#global x)#pop in
-      env, [Mov (s, M ("global_" ^ x))]
+      (
+        match s with
+        | S _ -> env, [Mov (s, eax); Mov (eax, M ("global_" ^ x))]
+        | _ -> env, [Mov (s, M ("global_" ^ x))]
+      )
     
     | BINOP op ->
       let a, b, env = env#pop2 in
@@ -137,19 +145,15 @@ let rec compile env = function
       in
       let conjunction = 
         [
-          Mov (a, edi);
-          Binop ("^", edx, edx);
           Binop ("^", eax, eax);
-          Binop ("cmp", edi, edx);
+          Binop ("^", edx, edx);
+          Binop ("^", edi, edi);
+
+          Binop ("cmp", edi, a);
           Set ("ne", "%al");
-          Push (eax);
-          
-          Mov (b, edi);
-          Binop ("^", eax, eax);
-          Binop ("^", edx, edx);
-          Binop ("cmp", edi, eax);
+
+          Binop ("cmp", edi, b);
           Set ("ne", "%dl");
-          Pop (eax);
 
           Binop ("&&", eax, edx); 
           Mov (edx, res);
@@ -157,12 +161,12 @@ let rec compile env = function
       in
       let disjunction = 
         [
-          Mov (a, eax); Mov (b, edx);
-          Binop ("!!", eax, edx);
+          Mov (a, edx);
           Binop ("^", eax, eax);
+          Binop ("!!", b, edx);
           Binop ("cmp", edx, eax);
           Set ("ne", "%al");
-          Mov(eax, res);
+          Mov (eax, res);
         ]
       in
       match op with 
