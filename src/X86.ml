@@ -85,7 +85,7 @@ let rec compile env = function
     match instr with
     | CONST n ->
       let s, env = env#allocate in
-      env, [Mov(L n, s)]
+      env, [Mov (L n, s)]
     
     | WRITE ->
       let s, env = env#pop in
@@ -97,23 +97,80 @@ let rec compile env = function
     
     | LD x ->
       let s, env = (env#global x)#allocate in
-      env, [Mov(M ("global_" ^ x), s)]
+      env, [Mov (M ("global_" ^ x), s)]
     
     | ST x ->
       let s, env = (env#global x)#pop in
-      env, [Mov(s, M ("global_" ^ x))]
+      env, [Mov (s, M ("global_" ^ x))]
     
     | BINOP op ->
       let a, b, env = env#pop2 in
       let res, env = env#allocate in      
       let plus_minus_mult op = 
         [
-          Mov (a, eax); Mov (b, edx); 
+          Mov (a, eax); Mov (b, edx);
           Binop (op, eax, edx); Mov (edx, res)
         ] 
       in 
+      let div_rest op = match op with
+      | "/" -> [Mov (b, eax); Cltd; IDiv a; Mov (eax, res)]
+      | "%" -> [Mov (b, eax); Cltd; IDiv a; Mov (edx, res)]
+      | _   -> failwith ("Not div and not rest")
+      in
+      let cmp_op_to_asm_cmd op = match op with
+      | "<" -> "l"
+      | "<=" -> "le"
+      | ">"  -> "g"
+      | ">=" -> "ge"
+      | "==" -> "e"
+      | "!=" -> "ne"
+      | _ -> failwith ("Unknown cmp operation")
+      in
+      let comparsions op = 
+        [
+          Mov (a, edi); Mov (b, edx);
+          Binop ("^", eax, eax);
+          Binop ("cmp", edi, edx);
+          Set (cmp_op_to_asm_cmd op, "%al");
+          Mov (eax, res);
+        ]
+      in
+      let conjunction = 
+        [
+          Mov (a, edi);
+          Binop ("^", edx, edx);
+          Binop ("^", eax, eax);
+          Binop ("cmp", edi, edx);
+          Set ("ne", "%al");
+          Push (eax);
+          
+          Mov (b, edi);
+          Binop ("^", eax, eax);
+          Binop ("^", edx, edx);
+          Binop ("cmp", edi, eax);
+          Set ("ne", "%dl");
+          Pop (eax);
+
+          Binop ("&&", eax, edx); 
+          Mov (edx, res);
+        ]
+      in
+      let disjunction = 
+        [
+          Mov (a, eax); Mov (b, edx);
+          Binop ("!!", eax, edx);
+          Binop ("^", eax, eax);
+          Binop ("cmp", edx, eax);
+          Set ("ne", "%al");
+          Mov(eax, res);
+        ]
+      in
       match op with 
       | "+" | "-" | "*" -> env, plus_minus_mult op
+      | "/" | "%" -> env, div_rest op
+      | "<" | "<=" | ">" | ">=" | "==" | "!=" -> env, comparsions op
+      | "&&" -> env, conjunction
+      | "!!" -> env, disjunction
       | _ -> failwith("Binop not supported yet")
     | _ -> failwith("Not yet supported")
   in 
@@ -136,15 +193,15 @@ class env =
     (* allocates a fresh position on a symbolic stack *)
     method allocate =    
       let x, n =
-	let rec allocate' = function
-	| []                               -> ebx     , 0
-  (* S n is allocated -> n+1 stack positions already allocated *)
-	| (S n)::_                         -> S (n+1) , n+1
-  (* Not allowed to allocate R num_of_regs*)
-	| (R n)::_ when n < num_of_regs    -> R (n+1) , stack_slots
-	| _                                -> S 0     , 1
-	in
-	allocate' stack
+      let rec allocate' = function
+      | []                               -> ebx     , 0
+      (* S n is allocated -> n+1 stack positions already allocated *)
+      | (S n)::_                         -> S (n+1) , n+1
+      (* Not allowed to allocate R num_of_regs*)
+      | (R n)::_ when n < num_of_regs    -> R (n+1) , stack_slots
+      | _                                -> S 0     , 1
+      in
+      allocate' stack
       in
       x, {< stack_slots = max n stack_slots; stack = x::stack >}
 
