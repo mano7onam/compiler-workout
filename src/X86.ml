@@ -200,9 +200,9 @@ class env =
       let rec allocate' = function
       | []                               -> ebx     , 0
       (* S n is allocated -> n+1 stack positions already allocated *)
-      | (S n)::_                         -> S (n+1) , n+1
+      | (S n)::_                         -> S (n+1) , n+2
       (* Not allowed to allocate R num_of_regs*)
-      | (R n)::_ when n < num_of_regs    -> R (n+1) , stack_slots
+      | (R n)::_ when n+1 < num_of_regs    -> R (n+1) , stack_slots
       | _                                -> S 0     , 1
       in
       allocate' stack
