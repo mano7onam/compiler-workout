@@ -42,6 +42,7 @@ module Expr =
  
        Takes a state and an expression, and returns the value of the expression in 
        the given state.
+<<<<<<< HEAD
     *)
 
     let rec eval_binop op x y =
@@ -68,12 +69,17 @@ module Expr =
       | Binop (op, a, b) -> 
         let x = eval stat a and y = eval stat b in
         eval_binop op x y
+=======
+    *)                                                       
+    let eval st expr = failwith "Not yet implemented"
+>>>>>>> 88cd6eaa4b79add3d179d7b5646f99b73460ad12
 
     (* Expression parser. You can use the following terminals:
          IDENT   --- a non-empty identifier a-zA-Z[a-zA-Z0-9_]* as a string
          DECIMAL --- a decimal constant [0-9]+ as a string
    
     *)
+<<<<<<< HEAD
 
     let make_parser_ops ops = List.map (fun op -> ostap ($(op)), fun a b -> Binop(op, a, b)) ops
 
@@ -93,6 +99,10 @@ module Expr =
           v:IDENT   {Var v} 
         | c:DECIMAL {Const c} 
         | -"(" parse -")"
+=======
+    ostap (                                      
+      parse: empty {failwith "Not yet implemented"}
+>>>>>>> 88cd6eaa4b79add3d179d7b5646f99b73460ad12
     )
 
   end
@@ -106,8 +116,12 @@ module Stmt =
     (* read into the variable           *) | Read   of string
     (* write the value of an expression *) | Write  of Expr.t
     (* assignment                       *) | Assign of string * Expr.t
-    (* composition                      *) | Seq    of t * t with show
-
+    (* composition                      *) | Seq    of t * t 
+    (* empty statement                  *) | Skip
+    (* conditional                      *) | If     of Expr.t * t * t
+    (* loop with a pre-condition        *) | While  of Expr.t * t
+    (* loop with a post-condition       *) (* add yourself *)  with show
+                                                                    
     (* The type of configuration: a state, an input stream, an output stream *)
     type config = Expr.state * int list * int list 
 
@@ -115,6 +129,7 @@ module Stmt =
           val eval : config -> t -> config
        Takes a configuration and a statement, and returns another configuration
     *)
+<<<<<<< HEAD
 
     let rec eval ((s, i, o) : config) stmt =
       match stmt with
@@ -142,6 +157,13 @@ module Stmt =
           -"read" -"(" x:IDENT -")"           {Read  x}
         | -"write" -"(" e:!(Expr.parse) -")"  {Write e}
         | x:IDENT -":=" e:!(Expr.parse)       {Assign(x, e)}
+=======
+    let rec eval conf stmt = failwith "Not yet implemented"
+                               
+    (* Statement parser *)
+    ostap (
+      parse: empty {failwith "Not yet implemented"}
+>>>>>>> 88cd6eaa4b79add3d179d7b5646f99b73460ad12
     )
       
   end
