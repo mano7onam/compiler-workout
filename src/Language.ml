@@ -42,9 +42,7 @@ module Expr =
  
        Takes a state and an expression, and returns the value of the expression in 
        the given state.
-<<<<<<< HEAD
-    *)
-
+    *)                                                       
     let rec eval_binop op x y =
       match op with
       | "+" -> x + y
@@ -69,18 +67,12 @@ module Expr =
       | Binop (op, a, b) -> 
         let x = eval stat a and y = eval stat b in
         eval_binop op x y
-=======
-    *)                                                       
-    let eval st expr = failwith "Not yet implemented"
->>>>>>> 88cd6eaa4b79add3d179d7b5646f99b73460ad12
 
     (* Expression parser. You can use the following terminals:
          IDENT   --- a non-empty identifier a-zA-Z[a-zA-Z0-9_]* as a string
          DECIMAL --- a decimal constant [0-9]+ as a string
-   
+                                                                                                                  
     *)
-<<<<<<< HEAD
-
     let make_parser_ops ops = List.map (fun op -> ostap ($(op)), fun a b -> Binop(op, a, b)) ops
 
     ostap (
@@ -99,12 +91,8 @@ module Expr =
           v:IDENT   {Var v} 
         | c:DECIMAL {Const c} 
         | -"(" parse -")"
-=======
-    ostap (                                      
-      parse: empty {failwith "Not yet implemented"}
->>>>>>> 88cd6eaa4b79add3d179d7b5646f99b73460ad12
     )
-
+    
   end
                     
 (* Simple statements: syntax and sematics *)
@@ -126,11 +114,9 @@ module Stmt =
     type config = Expr.state * int list * int list 
 
     (* Statement evaluator
-          val eval : config -> t -> config
+         val eval : config -> t -> config
        Takes a configuration and a statement, and returns another configuration
     *)
-<<<<<<< HEAD
-
     let rec eval ((s, i, o) : config) stmt =
       match stmt with
       | Assign(x, e) -> ((Expr.update x (Expr.eval s e) s), i, o)
@@ -143,7 +129,7 @@ module Stmt =
       | Seq (a, b) -> 
         let a_conf = eval (s, i, o) a in
         eval a_conf b
-
+                               
     (* Statement parser *)
     ostap (
       parse: !(Ostap.Util.expr
@@ -157,13 +143,6 @@ module Stmt =
           -"read" -"(" x:IDENT -")"           {Read  x}
         | -"write" -"(" e:!(Expr.parse) -")"  {Write e}
         | x:IDENT -":=" e:!(Expr.parse)       {Assign(x, e)}
-=======
-    let rec eval conf stmt = failwith "Not yet implemented"
-                               
-    (* Statement parser *)
-    ostap (
-      parse: empty {failwith "Not yet implemented"}
->>>>>>> 88cd6eaa4b79add3d179d7b5646f99b73460ad12
     )
       
   end
@@ -181,4 +160,4 @@ let eval p i =
   let _, _, o = Stmt.eval (Expr.empty, i, []) p in o
 
 (* Top-level parser *)
-let parse = Stmt.parse
+let parse = Stmt.parse 
