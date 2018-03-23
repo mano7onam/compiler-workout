@@ -108,7 +108,7 @@ module Stmt =
     (* empty statement                  *) | Skip
     (* conditional                      *) | If     of Expr.t * t * t
     (* loop with a pre-condition        *) | While  of Expr.t * t
-    (* loop with a post-condition       *) (* add yourself *)  with show
+    (* loop with a post-condition       *) | Repeat of t * Expr.t  with show
                                                                     
     (* The type of configuration: a state, an input stream, an output stream *)
     type config = Expr.state * int list * int list 
@@ -117,20 +117,47 @@ module Stmt =
          val eval : config -> t -> config
        Takes a configuration and a statement, and returns another configuration
     *)
-    let rec eval ((s, i, o) : config) stmt =
+    let rec eval ((st, i, o) as config) stmt =
       match stmt with
-      | Assign(x, e) -> ((Expr.update x (Expr.eval s e) s), i, o)
+      | Assign (x, e) -> ((Expr.update x (Expr.eval st e) st), i, o)
       | Read x -> (
         match i with 
-        | z :: i_tail -> ((Expr.update x z s), i_tail, o)
+        | z :: i_tail -> ((Expr.update x z st), i_tail, o)
         | [] -> failwith "[READ]: Empty input stream"
       )
-      | Write e -> (s, i, o @ [(Expr.eval s e)])
+      | Write e -> (st, i, o @ [(Expr.eval st e)])
       | Seq (a, b) -> 
-        let a_conf = eval (s, i, o) a in
+        let a_conf = eval (st, i, o) a in
         eval a_conf b
+      | Skip -> config
+      | If (cond, the, els) -> eval config (if Expr.eval st cond == 1 then the else els)
+      | While (cond, body) -> 
+        let rec while_loop ((st', _, _) as config') = 
+          if (Expr.eval st' cond != 0)
+          then while_loop (eval config' body)
+          else config'
+        in while_loop config
+      | Repeat (body, until_cond) -> 
+        let rec repeat_loop ((st', _, _) as config') =
+          let ((st'', _, _) as config'') = eval config' body in 
+          if (Expr.eval st'' until_cond == 0)
+          then repeat_loop config''
+          else config''
+        in repeat_loop config
                                
     (* Statement parser *)
+    let rec parse_elif_acts elif_acts parsed_else_act = 
+      match elif_acts with
+      [] -> parsed_else_act
+      | (cond, act)::tail -> If (cond, act, parse_elif_acts tail parsed_else_act)
+
+    let parse_elif_else elif_acts else_act = 
+      let parsed_else_act = 
+        match else_act with
+        | None -> Skip
+        | Some act -> act
+      in parse_elif_acts elif_acts parsed_else_act
+
     ostap (
       parse: !(Ostap.Util.expr
         (fun x -> x)
@@ -140,9 +167,18 @@ module Stmt =
         primary
       );
       primary: 
-          -"read" -"(" x:IDENT -")"           {Read  x}
-        | -"write" -"(" e:!(Expr.parse) -")"  {Write e}
-        | x:IDENT -":=" e:!(Expr.parse)       {Assign(x, e)}
+          %"read" "(" x:IDENT ")"                             { Read  x }
+        | %"write" "(" e: !(Expr.parse) ")"                   { Write e }
+        | x:IDENT -":=" e: !(Expr.parse)                      { Assign (x, e) }
+        | %"skip"                                             { Skip }
+        | %"if" cond: !(Expr.parse) %"then" act:parse
+          elif_acts:(%"elif" !(Expr.parse) %"then" parse)*
+          els_act:(%"else" parse)?
+          %"fi"                                               { If (cond, act, parse_elif_else elif_acts els_act) }
+        | %"while" cond: !(Expr.parse) %"do" act:parse %"od"  { While (cond, act) }
+        | %"repeat" act:parse %"until" cond: !(Expr.parse)    { Repeat (act, cond) }
+        | %"for" init:parse "," cond: !(Expr.parse)
+          "," inc:parse %"do" act:parse %"od"                 { Seq (init, While (cond, Seq (act, inc))) }
     )
       
   end
