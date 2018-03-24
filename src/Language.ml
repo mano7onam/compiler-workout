@@ -133,14 +133,14 @@ module Stmt =
       | If (cond, the, els) -> eval config (if Expr.eval st cond == 1 then the else els)
       | While (cond, body) -> 
         let rec while_loop ((st', _, _) as config') = 
-          if (Expr.eval st' cond <> 0)
+          if (Expr.eval st' cond != 0)
           then while_loop (eval config' body)
           else config'
         in while_loop config
       | Repeat (body, until_cond) -> 
         let rec repeat_loop ((st', _, _) as config') =
           let ((st'', _, _) as config'') = eval config' body in 
-          if (Expr.eval st'' until_cond <> 0)
+          if (Expr.eval st'' until_cond == 0)
           then repeat_loop config''
           else config''
         in repeat_loop config
@@ -169,7 +169,7 @@ module Stmt =
       primary: 
           %"read" "(" x:IDENT ")"                             { Read  x }
         | %"write" "(" e: !(Expr.parse) ")"                   { Write e }
-        | x:IDENT -":=" e: !(Expr.parse)                      { Assign (x, e) }
+        | x:IDENT ":=" e: !(Expr.parse)                       { Assign (x, e) }
         | %"skip"                                             { Skip }
         | %"if" cond: !(Expr.parse) %"then" act:parse
           elif_acts:(%"elif" !(Expr.parse) %"then" parse)*

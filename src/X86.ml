@@ -84,6 +84,75 @@ open SM
    Take an environment, a stack machine program, and returns a pair --- the updated environment and the list
    of x86 instructions
 *)
+let div_or_mod_reg = function
+  | "/" -> eax
+  | "%" -> edx
+  | _   -> failwith ("Unknown division operation")
+
+let cmp_op_to_asm_cmd op = match op with
+  | "<" -> "l"
+  | "<=" -> "le"
+  | ">"  -> "g"
+  | ">=" -> "ge"
+  | "==" -> "e"
+  | "!=" -> "ne"
+  | _ -> failwith ("Unknown cmp operation")
+
+let compile_binop env op =
+  let b, a, env = env#pop2 in
+  let res, env = env#allocate in
+  match op with
+  | "+" | "-" | "*" ->
+    env, 
+    [
+      Mov (a, eax); 
+      Binop (op, b, eax); 
+      Mov (eax, res)
+    ]
+  | "/" | "%" ->
+    env, 
+    [
+      Mov (a, eax); 
+      Cltd; 
+      IDiv b; 
+      Mov (div_or_mod_reg op, res)
+    ]
+  | "<" | "<=" | ">" | ">=" | "==" | "!=" ->
+    env, 
+    [
+      Binop ("^", eax, eax); 
+      Mov (a, edx); 
+      Binop ("cmp", b, edx);
+      Set (cmp_op_to_asm_cmd op, "%al"); 
+      Mov (eax, res)
+    ]
+  | "!!" ->
+    env, 
+    [
+      Mov (a, edx);
+      Binop ("^", eax, eax);
+      Binop ("!!", b, edx);
+      Binop ("cmp", edx, eax);
+      Set ("ne", "%al");
+      Mov (eax, res);
+    ]
+  | "&&" ->
+    env, 
+    [
+      Binop ("^", eax, eax); 
+      Binop ("cmp", a, eax); 
+      Set ("ne", "%al");
+      
+      Binop ("^", edx, edx); 
+      Binop ("cmp", b, edx); 
+      Set ("ne", "%dl");
+      
+      Binop ("&&", eax, edx); 
+      Mov (edx, res)
+    ]
+  | _ -> failwith "Not supported operation"
+
+
 let rec compile env = function
 | [] -> env, []
 | instr :: code' ->
@@ -98,23 +167,25 @@ let rec compile env = function
       env, [Push s; Call "Lwrite"; Pop eax]
     
     | READ ->
-      let x, env = env#allocate in 
-      env, [Call "Lread"; Mov (eax, x)]
+      let s, env = env#allocate in 
+      env, [Call "Lread"; Mov (eax, s)]
     
     | LD x ->
       let s, env = (env#global x)#allocate in
+      let mem = M (env#loc x) in
       (
         match s with
-        | S _ -> env, [Mov (M ("global_" ^ x), eax); Mov (eax, s)]
-        | _ -> env, [Mov (M ("global_" ^ x), s)]
+        | R _ -> env, [Mov (mem, s)]
+        | _ -> env, [Mov (mem, eax); Mov (eax, s)]
       )
     
     | ST x ->
       let s, env = (env#global x)#pop in
+      let mem = M (env#loc x) in
       (
         match s with
-        | S _ -> env, [Mov (s, eax); Mov (eax, M ("global_" ^ x))]
-        | _ -> env, [Mov (s, M ("global_" ^ x))]
+        | R _ -> env, [Mov (s, mem)]
+        | _ -> env, [Mov (s, eax); Mov (eax, mem)]
       )
 
     | LABEL label -> env, [Label label]
@@ -122,75 +193,10 @@ let rec compile env = function
     | JMP label -> env, [Jmp label]
 
     | CJMP (cond, label) -> 
-      let pos, env = env#pop in
-      env, [Binop ("cmp", L 0, pos); CJmp (cond, label)]
+      let s, env' = env#pop in
+      env', [Binop ("cmp", L 0, s); CJmp (cond, label)]
     
-    | BINOP op ->
-      let a, b, env = env#pop2 in
-      let res, env = env#allocate in      
-      let plus_minus_mult op = 
-        [
-          Mov (a, edi); Mov (b, edx);
-          Binop (op, edi, edx); Mov (edx, res)
-        ] 
-      in 
-      let div_rest op = match op with
-      | "/" -> [Mov (b, eax); Cltd; IDiv a; Mov (eax, res)]
-      | "%" -> [Mov (b, eax); Cltd; IDiv a; Mov (edx, res)]
-      | _   -> failwith ("Not div and not rest")
-      in
-      let cmp_op_to_asm_cmd op = match op with
-      | "<" -> "l"
-      | "<=" -> "le"
-      | ">"  -> "g"
-      | ">=" -> "ge"
-      | "==" -> "e"
-      | "!=" -> "ne"
-      | _ -> failwith ("Unknown cmp operation")
-      in
-      let comparsions op = 
-        [
-          Mov (a, edi);
-          Binop ("^", eax, eax);
-          Binop ("cmp", edi, b);
-          Set (cmp_op_to_asm_cmd op, "%al");
-          Mov (eax, res);
-        ]
-      in
-      let conjunction = 
-        [
-          Binop ("^", eax, eax);
-          Binop ("^", edx, edx);
-          Binop ("^", edi, edi);
-
-          Binop ("cmp", edi, a);
-          Set ("ne", "%al");
-
-          Binop ("cmp", edi, b);
-          Set ("ne", "%dl");
-
-          Binop ("&&", eax, edx); 
-          Mov (edx, res);
-        ]
-      in
-      let disjunction = 
-        [
-          Mov (a, edx);
-          Binop ("^", eax, eax);
-          Binop ("!!", b, edx);
-          Binop ("cmp", edx, eax);
-          Set ("ne", "%al");
-          Mov (eax, res);
-        ]
-      in
-      match op with 
-      | "+" | "-" | "*" -> env, plus_minus_mult op
-      | "/" | "%" -> env, div_rest op
-      | "<" | "<=" | ">" | ">=" | "==" | "!=" -> env, comparsions op
-      | "&&" -> env, conjunction
-      | "!!" -> env, disjunction
-      | _ -> failwith("Binop not supported yet")
-    | _ -> failwith("Not yet supported")
+    | BINOP op -> compile_binop env op
   in 
   let env, asm' = compile env code' in
   env, asm @ asm'
