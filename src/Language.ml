@@ -133,7 +133,7 @@ module Stmt =
       | If (cond, the, els) -> eval config (if Expr.eval st cond == 1 then the else els)
       | While (cond, body) -> 
         let rec while_loop ((st', _, _) as config') = 
-          if (Expr.eval st' cond != 0)
+          if (Expr.eval st' cond <> 0)
           then while_loop (eval config' body)
           else config'
         in while_loop config
