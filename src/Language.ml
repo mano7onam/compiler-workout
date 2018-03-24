@@ -140,7 +140,7 @@ module Stmt =
       | Repeat (body, until_cond) -> 
         let rec repeat_loop ((st', _, _) as config') =
           let ((st'', _, _) as config'') = eval config' body in 
-          if (Expr.eval st'' until_cond == 0)
+          if (Expr.eval st'' until_cond <> 0)
           then repeat_loop config''
           else config''
         in repeat_loop config
