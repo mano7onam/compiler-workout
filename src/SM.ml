@@ -10,11 +10,12 @@ open Language
 (* load a variable to the stack    *) | LD    of string
 (* store a variable from the stack *) | ST    of string
 (* a label                         *) | LABEL of string
-(* unconditional jump              *) | JMP   of string                                                                                                                
+(* unconditional jump              *) | JMP   of string
 (* conditional jump                *) | CJMP  of string * string
-(* begins procedure definition     *) | BEGIN of string list * string list
+(* begins procedure definition     *) | BEGIN of string * string list * string list
 (* end procedure definition        *) | END
-(* calls a procedure               *) | CALL  of string with show
+(* calls a function/procedure      *) | CALL  of string * int * bool
+(* returns from a function         *) | RET   of bool with show
                                                    
 (* The type for the stack machine program *)                                                               
 type prg = insn list
@@ -34,55 +35,58 @@ let check_cond_jmp cond value =
   | "nz" -> value <> 0
   | "z" -> value = 0 
 
-let rec eval env conf = function 
-	| [] -> conf
-	| inst::prog -> 
-		match inst, conf with
-		| BINOP op, (cstack, y::x::stack_tail, stmt_conf) -> 
-			let res = Expr.eval_binop op x y in
-			eval env (cstack, res::stack_tail, stmt_conf) prog
-		| CONST z, (cstack, stack, stmt_conf) ->
-			eval env (cstack, z::stack, stmt_conf) prog
-		| READ, (cstack, stack, (st, z::i, o)) ->
-			eval env (cstack, z::stack, (st, i, o)) prog
-		| WRITE, (cstack, z::stack, (st, i, o)) ->
-			eval env (cstack, stack, (st, i, o @ [z])) prog
-		| LD x, (cstack, stack, (st, i, o)) ->
-			let res = State.eval st x 
-			in 	eval env (cstack, res::stack, (st, i, o)) prog
-		| ST x, (cstack, z::stack, (st, i, o)) ->
-			let st' =	State.update x z st 
-			in 	eval env (cstack, stack, (st', i, o)) prog
-		| LABEL label, conf -> eval env conf prog
-		| JMP label, conf -> eval env conf (env#labeled label)
-		| CJMP (cond, label), (cstack, stack, stmt_conf) -> (
-			eval env (cstack, List.tl stack, stmt_conf)
-      (if (check_cond_jmp cond (List.hd stack)) then (env#labeled label) else prog)
-		)
-		| CALL name, (cstack, stack, (st, i, o)) ->
-			eval env ((prog, st)::cstack, stack, (st, i, o)) (env#labeled name)
-		| BEGIN (args, xs), (cstack, stack, (st, i, o)) ->
-			let rec init_args state = function
-				| a::args, z::stack -> 
-					let state', stack' = init_args state (args, stack)
-					in State.update a z state', stack'
-				| [], stack -> state, stack
-			in let s', stack' = init_args (State.enter st @@ args @ xs) (args, stack)
-			in eval env (cstack, stack', (s', i, o)) prog
-		| END, (cstack, stack, (st, i, o)) -> 
-		(
-			match cstack with
-			| (p', st')::cstack' -> 
-				eval env (cstack', stack, (State.leave st st', i, o)) p'
-			| [] -> conf
-		)	
+let rec eval env conf = function
+  | [] -> conf
+  | instr::prog_tail ->
+    let (cstack, stack, stmt_conf) = conf in
+    let (st, i, o) = stmt_conf in
+    match instr with
+    | BINOP op ->
+      let (x::y::stack_tail) = stack in
+      let res = Expr.eval_binop op y x in
+      eval env (cstack, res::stack_tail, stmt_conf) prog_tail
+    | CONST z -> eval env (cstack, z::stack, stmt_conf) prog_tail
+    | READ -> 
+      let (i::i_tail) = i in 
+      eval env (cstack, i::stack, (st, i_tail, o)) prog_tail
+    | WRITE -> 
+      let (z::stack_tail) = stack in 
+      eval env (cstack, stack_tail, (st, i, o @ [z])) prog_tail
+    | LD x -> 
+      let res = State.eval st x in
+      eval env (cstack, res::stack, stmt_conf) prog_tail
+    | ST x -> 
+      let (s::stack_tail) = stack in
+      let res = State.update x s st in
+      eval env (cstack, stack_tail, (res, i, o)) prog_tail
+    | LABEL _ -> eval env conf prog_tail
+    | JMP label -> eval env conf (env#labeled label)
+    | CJMP (cond, label)  -> 
+      (
+			  eval env (cstack, List.tl stack, stmt_conf)
+        (if (check_cond_jmp cond (List.hd stack)) then (env#labeled label) else prog_tail)
+      )
+    | CALL (f, _, _) -> eval env ((prog_tail, st)::cstack, stack, stmt_conf) @@ env#labeled f
+    | BEGIN (_, args, xs) ->
+      let rec init_args st = function
+        | a::args, z::stack -> 
+          let state', stack' = init_args st (args, stack) in 
+          State.update a z state', stack'
+        | [], stack -> st, stack
+      in let state', stack' = init_args (State.enter st @@ args @ xs) (args, stack)
+      in eval env (cstack, stack', (state', i, o)) prog_tail
+    | END | RET _ ->
+      match cstack with
+      | (prog, s)::cstack' ->
+        let res = State.leave st s, i, o in
+        eval env (cstack', stack, res) prog
+      | [] -> conf
 
 (* Top-level evaluation
      val run : prg -> int list -> int list
    Takes a program, an input stream, and returns an output stream this program calculates
 *)
 let run p i =
-  (*print_prg p;*)
   let module M = Map.Make (String) in
   let rec make_map m = function
   | []              -> m
@@ -98,87 +102,73 @@ let run p i =
    stack machine
 *)
 let rec compile_expr = function
-| Expr.Var x -> [LD x]
-| Expr.Const n -> [CONST n]
-| Expr.Binop (op, x, y) -> 
-  compile_expr x @ 
-  compile_expr y @ 
-	[BINOP op]
-| Expr.Call (fun_name, args) ->
-	List.concat (List.map compile_expr (List.rev args)) @ 
-	[CALL fun_name]
-
-let rec compile_body env = function
-	| Stmt.Assign (x, e) -> compile_expr e @ [ST x], env
-	| Stmt.Read x -> [READ; ST x], env
-	| Stmt.Write e ->	compile_expr e @ [WRITE], env
-	| Stmt.Seq (a, b) -> 
-		let a', env = compile_body env a in
-		let b', env = compile_body env b in
-		a' @ b', env
-	| Stmt.Skip -> [], env
-	| Stmt.If (cond, then_body, else_body) ->
-		let compiled_cond 			= compile_expr cond in
-		let label_else, env 		= env#generate in 
-		let label_end_if, env 	= env#generate in
-		let then_compiled, env 	= compile_body env then_body in
-		let else_compiled, env 	= compile_body env else_body in
-		compiled_cond 												@ 
-		[CJMP ("z", label_else)] 							@ 
-		then_compiled 												@ 
-		[JMP label_end_if; LABEL label_else] 	@ 
-		else_compiled 												@ 
-		[LABEL label_end_if], 
-		env
-	| Stmt.While (cond, while_body) ->
-		let compiled_cond               		= compile_expr cond in
-		let label_cond, env 								= env#generate in
-		let label_loop, env 								= env#generate in
-		let compiled_while_body, env 				= compile_body env while_body in
-		[JMP label_cond; LABEL label_loop] 	@ 
-		compiled_while_body 								@ 
-		[LABEL label_cond] 									@ 
-		compiled_cond 											@ 
-		[CJMP ("nz", label_loop)], 
-		env
-	| Stmt.Repeat (cond, repeat_body) ->
-		let label_loop, env 		= env#generate in
-		let compiled_repeat_body, env = compile_body env repeat_body in
-		[LABEL label_loop] 						@ 
-		compiled_repeat_body 					@ 
-		compile_expr cond 						@ 
-		[CJMP ("z", label_loop)], 
-		env
-	| Stmt.Call (fun_name, args) ->
-		List.concat (List.map compile_expr (List.rev args)) @ 
-		[CALL fun_name], 
-		env
-	| Stmt.Return e ->
-		match e with
-		| None -> [END], env
-		| Some e -> compile_expr e @ [END], env
+  | Expr.Var x -> [LD x]
+  | Expr.Const n -> [CONST n]
+  | Expr.Binop (op, x, y) -> 
+    compile_expr x @ 
+    compile_expr y @ 
+    [BINOP op]
+  | Expr.Call (fun_name, args) -> 
+    List.fold_left (fun ac e -> compile_expr e @ ac) [] args @ 
+    [CALL (fun_name, List.length args, false)]
 
 let compile (defs, prog) = 
-	let env = 
-		object
-    		val count_label = 0
-    		method generate = "LABEL_" ^ string_of_int count_label, {< count_label = count_label + 1 >}
-		end 
-	in let compiled_prog, env = compile_body env prog
-	in let rec compile_functions env def_functions =
-		match def_functions with
-		| (name, (args, locals, body))::def_functions' ->
-			let rest_functions, env 	= compile_functions env def_functions' 
-			in let compiled_body, env = compile_body env body
-			in 
-			[LABEL name; BEGIN (args, locals)] 		@ 
-			compiled_body 												@ 
-			[END] 																@ 
-			rest_functions,
-			env
-		| [] -> [], env  
-	in let all_functions, _  = compile_functions env defs 
-	in 
-	compiled_prog 	@ 
-	[END] 					@ 
-	all_functions
+  let env = object 
+    val mutable id = 0
+    method generate = 
+      id <- (id + 1);
+      "L" ^ string_of_int id
+  end
+  in let rec compile_body prog =
+    match prog with
+    | Stmt.Assign (x, e) -> (compile_expr e) @ [ST x]
+    | Stmt.Read x -> [READ] @ [ST x]
+    | Stmt.Write e -> (compile_expr e) @ [WRITE]
+    | Stmt.Seq (a, b) -> (compile_body a) @ (compile_body b)
+    | Stmt.Skip -> []
+    | Stmt.If (cond, then_body, else_body) ->
+      let compiled_cond = compile_expr cond in
+      let label_else = env#generate in 
+      let label_end_if = env#generate in
+      let then_compiled = compile_body then_body in
+      let else_compiled = compile_body else_body in
+      compiled_cond @ 
+      [CJMP ("z", label_else)] @ 
+      then_compiled @ 
+      [JMP label_end_if; LABEL label_else] @ 
+      else_compiled @ 
+      [LABEL label_end_if]
+    | Stmt.While (cond, while_body) ->
+      let compiled_cond = compile_expr cond in
+      let label_cond = env#generate in
+      let label_loop = env#generate in
+      let compiled_while_body = compile_body while_body in
+      [JMP label_cond; LABEL label_loop] @ 
+      compiled_while_body @ 
+      [LABEL label_cond] @ 
+      compiled_cond @ 
+      [CJMP ("nz", label_loop)]
+    | Stmt.Repeat (cond, repeat_body) ->
+      let label_loop= env#generate in
+      let compiled_repeat_body = compile_body repeat_body in
+      [LABEL label_loop] @ 
+      compiled_repeat_body @ 
+      compile_expr cond @ 
+      [CJMP ("z", label_loop)]
+    | Stmt.Return e -> 
+      (
+        match e with
+        | None -> [RET false]
+        | Some e -> compile_expr e @ [RET true]
+      )
+    | Stmt.Call (fun_name, args) -> 
+      List.concat (List.map compile_expr args) @ 
+      [CALL (fun_name, List.length args, true)] in
+      let compile_def (fun_name, (args, locals, body)) = 
+        [
+          LABEL fun_name; 
+          BEGIN (fun_name, args, locals)
+        ] 
+        @ compile_body body @ [END] 
+      in
+	  (compile_body prog @ [END] @ List.concat (List.map compile_def defs))
