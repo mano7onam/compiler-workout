@@ -103,107 +103,109 @@ let cmp_op_to_asm_cmd = function
   | _ -> failwith ("Unknown cmp operation")
 
 let compile_binop env op =
-    let b, a, env = env#pop2 in
-    let res, env = env#allocate in
-    match op with
-    | "+" | "-" | "*" ->
-      env, 
-      [
-        Mov (a, eax); 
-        Binop (op, b, eax); 
-        Mov (eax, res)
-      ]
-    | "/" | "%" ->
-      env, 
-      [
-        Mov (a, eax); 
-        Cltd; 
-        IDiv b; 
-        Mov (div_or_mod_reg op, res)
-      ]
-    | "<" | "<=" | ">" | ">=" | "==" | "!=" ->
-      env, 
-      [
-        Binop ("^", eax, eax); 
-        Mov (a, edx); 
-        Binop ("cmp", b, edx);
-        Set (cmp_op_to_asm_cmd op, "%al"); 
-        Mov (eax, res)
-      ]
-    | "!!" ->
-      env, 
-      [
-        Mov (a, edx);
-        Binop ("^", eax, eax);
-        Binop ("!!", b, edx);
-        Binop ("cmp", edx, eax);
-        Set ("ne", "%al");
-        Mov (eax, res);
-      ]
-    | "&&" ->
-      env, 
-      [
-        Binop ("^", eax, eax); 
-        Binop ("cmp", a, eax); 
-        Set ("ne", "%al");
-        
-        Binop ("^", edx, edx); 
-        Binop ("cmp", b, edx); 
-        Set ("ne", "%dl");
-        
-        Binop ("&&", eax, edx); 
-        Mov (edx, res)
-      ]
+  let b, a, env = env#pop2 in
+  let res, env = env#allocate in
+  match op with
+  | "+" | "-" | "*" ->
+    env, 
+    [
+      Mov (a, eax); 
+      Binop (op, b, eax); 
+      Mov (eax, res)
+    ]
+  | "/" | "%" ->
+    env, 
+    [
+      Mov (a, eax); 
+      Cltd; 
+      IDiv b; 
+      Mov (div_or_mod_reg op, res)
+    ]
+  | "<" | "<=" | ">" | ">=" | "==" | "!=" ->
+    env, 
+    [
+      Binop ("^", eax, eax); 
+      Mov (a, edx); 
+      Binop ("cmp", b, edx);
+      Set (cmp_op_to_asm_cmd op, "%al"); 
+      Mov (eax, res)
+    ]
+  | "!!" ->
+    env, 
+    [
+      Mov (a, edx);
+      Binop ("^", eax, eax);
+      Binop ("!!", b, edx);
+      Binop ("cmp", edx, eax);
+      Set ("ne", "%al");
+      Mov (eax, res);
+    ]
+  | "&&" ->
+    env, 
+    [
+      Binop ("^", eax, eax); 
+      Binop ("cmp", a, eax); 
+      Set ("ne", "%al");
+      
+      Binop ("^", edx, edx); 
+      Binop ("cmp", b, edx); 
+      Set ("ne", "%dl");
+      
+      Binop ("&&", eax, edx); 
+      Mov (edx, res)
+    ]
   | _ -> failwith "Not supported operation"
 
 let compile env code =
+  let suffix = function
+  | "<"  -> "l"
+  | "<=" -> "le"
+  | "==" -> "e"
+  | "!=" -> "ne"
+  | ">=" -> "ge"
+  | ">"  -> "g"
+  | _    -> failwith "unknown operator" 
+  in
   let rec compile' env scode =
+    let is_on_stack = function S _ -> true | _ -> false in
     match scode with
     | [] -> env, []
     | instr :: scode' ->
-      let env', code' =
-        match instr with
-        | CONST n ->
-          let s, env = env#allocate in
-          env, [Mov (L n, s)]
+        let env', code' =
+          match instr with
+          | CONST n ->
+            let s, env = env#allocate in
+            env, [Mov (L n, s)]               
 
-        | WRITE ->
-          let s, env = env#pop in
-          env, [Push s; Call "Lwrite"; Pop eax]
+          | LD x ->
+            let s, env = (env#global x)#allocate in
+            env,
+            (
+              match s with
+              | S _ | M _ -> [Mov (env#loc x, eax); Mov (eax, s)]
+              | _ -> [Mov (env#loc x, s)]
+            )	    
 
-        | READ ->
-          let s, env = env#allocate in 
-          env, [Call "Lread"; Mov (eax, s)]
+          | ST x ->
+            let s, env = (env#global x)#pop in
+            env,
+            (
+              match s with
+              | S _ | M _ -> [Mov (s, eax); Mov (eax, env#loc x)]
+              | _  -> [Mov (s, env#loc x)]
+            )
+          
+          | LABEL s -> env, [Label s]
 
-        | LD x ->
-          let s, env = (env#global x)#allocate in
-          env,
-          (
-            match s with
-            | S _ | M _ -> [Mov (env#loc x, eax); Mov (eax, s)]
-            | _         -> [Mov (env#loc x, s)]
-          )	    
+          | JMP l -> env, [Jmp l]
 
-        | ST x ->
-          let s, env = (env#global x)#pop in
-          env,
-          (
-            match s with
-            | S _ | M _ -> [Mov (s, eax); Mov (eax, env#loc x)]
-            | _         -> [Mov (s, env#loc x)]
-          )
+          | CJMP (s, l) ->
+              let x, env = env#pop in
+              env, [Binop ("cmp", L 0, x); CJmp (s, l)]
 
-        | LABEL label -> env, [Label label]
-        
-        | JMP label -> env, [Jmp label]
-        
-        | CJMP (cond, label) ->
-          let x, env = env#pop in
-          env, [Binop ("cmp", L 0, x); CJmp (cond, label)]
+          | BINOP op -> compile_binop env op
 
-        | BINOP op -> compile_binop env op
-        
-        | BEGIN (fun_name, args, locals) ->
+          | BEGIN (fun_name, args, locals) ->
             let env = env#enter fun_name args locals in
             env, 
             [
@@ -212,65 +214,61 @@ let compile env code =
               Binop ("-", M ("$" ^ env#lsize), esp)
             ]
 
-        | END -> 
-          env, 
-          [
-            Label env#epilogue; 
-            Mov (ebp, esp); 
-            Pop ebp; 
-            Ret; 
-            Meta (Printf.sprintf "\t.set %s, %d" env#lsize (env#allocated * word_size))
-          ]
+          | END -> 
+            env, 
+            [
+              Label env#epilogue; 
+              Mov (ebp, esp); 
+              Pop ebp; 
+              Ret; 
+              Meta (Printf.sprintf "\t.set %s, %d" env#lsize (env#allocated * word_size))
+            ]
 
-        | CALL (f, n, p) ->
-          let pushr, popr =
-            List.split @@ List.map(fun r -> (Push r, Pop r)) env#live_registers
-          in
-          let env, code =
-            if n = 0
+          | CALL (f, n, p) ->
+            let pushr, popr =
+              List.split @@ List.map(fun r -> (Push r, Pop r)) env#live_registers
+            in
+            let env, code =
+              if n = 0
+              then 
+                env, pushr @ [Call f] @ (List.rev popr)
+              else
+                let rec push_args env acc = function
+                | 0 -> env, acc
+                | n -> let x, env = env#pop in push_args env ((Push x)::acc) (n - 1)
+                in
+                let env, pushs = push_args env [] n in
+                env, pushr @ pushs @ [Call f; Binop ("+", L (n * 4), esp)] @ (List.rev popr) 
+            in
+            (
+              if p 
+              then 
+                env, code 
+              else 
+                let y, env = env#allocate in
+                env, code @ [Mov (eax, y)]
+            )
+
+          | RET b -> 
+            if b 
             then 
-              env, pushr @ [Call f] @ (List.rev popr)
-            else
-              let rec push_args env acc = function
-              | 0 -> env, acc
-              | n -> let x, env = env#pop in push_args env ((Push x)::acc) (n - 1)
-              in
-              let env, pushs = push_args env [] n in
-              env, pushr @ pushs @ [Call f; Binop ("+", L (n * 4), esp)] @ (List.rev popr) 
-          in
-          (
-            if p 
-            then 
-              env, code 
+              let x, env = env#pop in env, [Mov (x, eax); Jmp env#epilogue]
             else 
-              let y, env = env#allocate in
-              env, code @ [Mov (eax, y)]
-          )
-
-        | RET b -> 
-          if b 
-          then 
-            let x, env = env#pop in env, [Mov (x, eax); Jmp env#epilogue]
-          else 
-            env, [Jmp env#epilogue]
-
+              env, [Jmp env#epilogue]
+        in
+          let env'', code'' = compile' env' scode' in
+          env'', code' @ code''
       in
-      let env'', code'' = compile' env' scode' in
-      env'', code' @ code''
-  in
-  compile' env code
-                                
+        compile' env code
+
+
 (* A set of strings *)           
 module S = Set.Make (String)
 
-let init n f =
-  let rec init' i n f =
-    if i >= n then []
-    else (f i) :: (init' (i + 1) n f)
-  in init' 0 n f
+let rec listInit i n f = if i >= n then [] else (f i) :: (listInit (i + 1) n f) 
 
 (* Environment implementation *)
-let make_assoc l = List.combine l (init (List.length l) (fun x -> x))
+let make_assoc l = List.combine l (listInit 0 (List.length l) (fun x -> x))
                      
 class env =
   object (self)
@@ -358,5 +356,4 @@ let build prog name =
   Printf.fprintf outf "%s" (genasm prog);
   close_out outf;
   let inc = try Sys.getenv "RC_RUNTIME" with _ -> "../runtime" in
-Sys.command (Printf.sprintf "gcc -m32 -o %s %s/runtime.o %s.s" name inc name)
-
+  Sys.command (Printf.sprintf "gcc -m32 -o %s %s/runtime.o %s.s" name inc name)
