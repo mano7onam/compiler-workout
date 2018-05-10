@@ -6,7 +6,8 @@ open List
 @type insn =
 (* binary operator                 *) | BINOP   of string
 (* put a constant on the stack     *) | CONST   of int
-(* put a string on the stack       *) | STRING  of string                      
+(* put a string on the stack       *) | STRING  of string
+(* create an S-expression          *) | SEXP    of string * int
 (* load a variable to the stack    *) | LD      of string
 (* store a variable from the stack *) | ST      of string
 (* store in an array               *) | STA     of string * int
@@ -16,7 +17,14 @@ open List
 (* begins procedure definition     *) | BEGIN   of string * string list * string list
 (* end procedure definition        *) | END
 (* calls a function/procedure      *) | CALL    of string * int * bool
-(* returns from a function         *) | RET     of bool with show
+(* returns from a function         *) | RET     of bool
+(* drops the top element off       *) | DROP
+(* duplicates the top element      *) | DUP
+(* swaps two top elements          *) | SWAP
+(* checks the tag of S-expression  *) | TAG     of string
+(* enters a scope                  *) | ENTER   of string list
+(* leaves a scope                  *) | LEAVE
+with show
                                                    
 (* The type for the stack machine program *)
 type prg = insn list
@@ -37,6 +45,7 @@ let split n l =
   | n -> let h::tl = rest in unzip (h::taken, tl) (n-1)
   in
   unzip ([], l) n
+<<<<<<< HEAD
 
   let check_cond_jmp cond value = 
     match cond with
@@ -57,6 +66,10 @@ let rec eval env ((cstack, stack, ((st, i, o) as c)) as conf) = function
         let y::x::stack' = stack in
         let res = Expr.eval_binop op (Value.to_int x) (Value.to_int y) in
         eval env (cstack, (Value.of_int res) :: stack', c) prog_tail
+=======
+          
+let rec eval env ((cstack, stack, ((st, i, o) as c)) as conf) _ = failwith "Not yet implemented"
+>>>>>>> dcf275fda6eb350b2ff39f58182dfcda201cbef1
 
       | CONST z  -> 
         eval env (cstack, (Value.of_int z)::stack, c) prog_tail
@@ -244,7 +257,44 @@ let compile_all_defs labels defs =
    Takes a program in the source language and returns an equivalent program for the
    stack machine
 *)
+<<<<<<< HEAD
 let compile (defs, p) = let end_label, labels = (new labels)#new_label in
   let labels1, compiled_prog = compile_body labels p in 
   let labels2, compiled_all_fun_defs = compile_all_defs labels1 defs in
   (compiled_prog @ [LABEL end_label]) @ [END] @ (List.concat compiled_all_fun_defs)
+=======
+let compile (defs, p) = 
+  let label s = "L" ^ s in
+  let rec call f args p =
+    let args_code = List.concat @@ List.map expr args in
+    args_code @ [CALL (label f, List.length args, p)]
+  and pattern lfalse _ = failwith "Not implemented"
+  and bindings p = failwith "Not implemented"
+  and expr e = failwith "Not implemented" in
+  let rec compile_stmt l env stmt =  failwith "Not implemented" in
+  let compile_def env (name, (args, locals, stmt)) =
+    let lend, env       = env#get_label in
+    let env, flag, code = compile_stmt lend env stmt in
+    env,
+    [LABEL name; BEGIN (name, args, locals)] @
+    code @
+    (if flag then [LABEL lend] else []) @
+    [END]
+  in
+  let env =
+    object
+      val ls = 0
+      method get_label = (label @@ string_of_int ls), {< ls = ls + 1 >}
+    end
+  in
+  let env, def_code =
+    List.fold_left
+      (fun (env, code) (name, others) -> let env, code' = compile_def env (label name, others) in env, code'::code)
+      (env, [])
+      defs
+  in
+  let lend, env = env#get_label in
+  let _, flag, code = compile_stmt lend env p in
+  (if flag then code @ [LABEL lend] else code) @ [END] @ (List.concat def_code) 
+
+>>>>>>> dcf275fda6eb350b2ff39f58182dfcda201cbef1
