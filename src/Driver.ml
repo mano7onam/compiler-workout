@@ -23,7 +23,7 @@ let parse infile =
        ] s
      end
     )
-  (ostap (!(Language.parse) -EOF))
+    (ostap (!(Language.parse) -EOF))
 
 let main =
   try

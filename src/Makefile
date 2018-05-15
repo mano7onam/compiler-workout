@@ -3,13 +3,7 @@ OCAMLC = ocamlfind c
 OCAMLOPT = ocamlfind opt
 OCAMLDEP = ocamlfind dep
 SOURCES = Language.ml SM.ml X86.ml Driver.ml
-<<<<<<< HEAD
-LIBS = GT.cma unix.cma re.cma emacs/re_emacs.cma str/re_str.cma
-# LIBS = GT.cma unix.cma re.cma re_emacs.cma re_str.cma
-CAMLP5 = -pp "camlp5o -I `ocamlfind -query GT.syntax` -I `ocamlfind -query ostap.syntax` pa_ostap.cmo pa_gt.cmo -L `ocamlfind -query GT.syntax`"
-=======
 CAMLP5 = -syntax camlp5o -package ostap.syntax,GT.syntax.all
->>>>>>> dcf275fda6eb350b2ff39f58182dfcda201cbef1
 PXFLAGS = $(CAMLP5)
 BFLAGS = -rectypes
 OFLAGS = $(BFLAGS)

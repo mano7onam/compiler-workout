@@ -1,6 +1,5 @@
 open GT       
 open Language
-open List
        
 (* The type for the stack machine instructions *)
 @type insn =
@@ -28,6 +27,8 @@ with show
                                                    
 (* The type for the stack machine program *)
 type prg = insn list
+
+let print_prg p = List.iter (fun i -> Printf.printf "%s\n" (show(insn) i)) p
                             
 (* The type for the stack machine configuration: control stack, stack and configuration from statement
    interpreter
@@ -38,16 +39,15 @@ type config = (prg * State.t) list * Value.t list * Expr.config
      val eval : env -> config -> prg -> config
    Takes an environment, a configuration and a program, and returns a configuration as a result. The
    environment is used to locate a label to jump to (via method env#labeled <label_name>)
-*)
+*)                                                  
 let split n l =
   let rec unzip (taken, rest) = function
   | 0 -> (List.rev taken, rest)
   | n -> let h::tl = rest in unzip (h::taken, tl) (n-1)
   in
-  unzip ([], l) n
-<<<<<<< HEAD
-
-  let check_cond_jmp cond value = 
+	unzip ([], l) n
+	
+let check_cond_jmp cond value = 
     match cond with
     | "nz" -> Value.to_int value <> 0
     | "z" -> Value.to_int value = 0 
@@ -56,77 +56,94 @@ let rec resolve_argument_mapping accumulator args stack =
   match args, stack with
   | [], _ -> List.rev accumulator, stack
   | a::tail_args, s::tail_stack -> resolve_argument_mapping ((a, s)::accumulator) tail_args tail_stack
-        
-let rec eval env ((cstack, stack, ((st, i, o) as c)) as conf) = function
-| [] -> conf
-| insn :: prog_tail ->
-    (
-      match insn with
-      | BINOP op -> 
-        let y::x::stack' = stack in
-        let res = Expr.eval_binop op (Value.to_int x) (Value.to_int y) in
-        eval env (cstack, (Value.of_int res) :: stack', c) prog_tail
-=======
           
-let rec eval env ((cstack, stack, ((st, i, o) as c)) as conf) _ = failwith "Not yet implemented"
->>>>>>> dcf275fda6eb350b2ff39f58182dfcda201cbef1
+let rec eval env ((cstack, stack, ((st, i, o) as c)) as conf) = function
+	| [] -> conf
+	| inst :: prog_tail -> 
+	  let cfg, next = 
+		(
+			match inst with 		 
+		  | BINOP op -> 
+				let y::x::stack' = stack in
+				let res = Value.of_int (Expr.eval_binop op (Value.to_int x) (Value.to_int y)) in
+				(cstack, res :: stack', c), prog_tail
 
-      | CONST z  -> 
-        eval env (cstack, (Value.of_int z)::stack, c) prog_tail
+			| CONST z  -> (cstack, (Value.of_int z)::stack, c), prog_tail
+			
+			| STRING s -> (cstack, (Value.of_string s)::stack, c), prog_tail
 
-      | STRING s -> 
-        eval env (cstack, (Value.of_string s)::stack, c) prog_tail
+			| LD x -> (cstack, (State.eval st x) :: stack, c), prog_tail
+			
+			| ST x -> 
+				let num = List.hd stack in 
+				(cstack, List.tl stack, (State.update x num st, i, o)), prog_tail
 
-      | LD x -> 
-        eval env (cstack, State.eval st x :: stack, c) prog_tail
-
-      | ST x -> 
-        let z::stack' = stack in 
-        eval env (cstack, stack', (State.update x z st, i, o)) prog_tail
-
-      | STA (x, n) -> 
-        let v::ind, stack' = split (n + 1) stack in 
-        eval env (cstack, stack', (Language.Stmt.update st x v (List.rev ind), i, o)) prog_tail
-
-      | LABEL s  -> eval env conf prog_tail
-
-      | JMP label -> eval env conf (env#labeled label)
-
-      | CJMP (cond, label) -> 
-        eval env (cstack, tl stack, c) 
+			| STA (x, n) -> 
+				let value::taken, rest = split (n + 1) stack in
+				(cstack, rest, (Stmt.update st x value taken, i, o)), prog_tail
+			
+			| SEXP (s, vals) -> 
+				let exprs, rest = split vals stack in 
+				(cstack, (Value.sexp s (List.rev exprs)) :: rest, c), prog_tail
+								
+			| LABEL s -> conf, prog_tail
+			
+			| JMP label -> conf, (env#labeled label)
+			
+			| CJMP (cond, label) -> 
+        (cstack, List.tl stack, c),
         (
-          if (check_cond_jmp cond (hd stack)) 
+          if (check_cond_jmp cond (List.hd stack)) 
           then (env#labeled label) 
           else prog_tail
-        )
-
-      | CALL (fname, n, p) -> 
+				)
+				
+			| CALL (fname, n, p) -> 
         if env#is_label fname
-        then eval env ((prog_tail, st)::cstack, stack, c) (env#labeled fname) 
-        else eval env (env#builtin conf fname n p) prog_tail
+        then ((prog_tail, st)::cstack, stack, c), (env#labeled fname) 
+        else (env#builtin conf fname n p), prog_tail
 
-      | BEGIN (_, args, xs) ->
-        let rec init_args st = function
-          | a::args, z::stack -> 
-            let state', stack' = init_args st (args, stack) in 
-            State.update a z state', stack'
-          | [], stack -> st, stack
-        in let state', stack' = init_args (State.enter st @@ args @ xs) (args, stack)
-        in eval env (cstack, stack', (state', i, o)) prog_tail
+		  | BEGIN (_, params, xs) ->
+				let new_st = State.enter st (params @ xs) in
+				let args, rest = split (List.length params) stack in
+				let evf = fun ast p v -> State.update p v ast in
+				let st' = List.fold_left2 evf new_st params (List.rev args) in
+				(cstack, rest, (st', i, o)), prog_tail
 
-      | END | RET _ -> 
-        (
-          match cstack with
-          | (prog_tail, st')::cstack' -> eval env (cstack', stack, (State.leave st st', i, o)) prog_tail
-          | [] -> conf
-        )
-    )
+			| END | RET _ -> 
+				(
+					match cstack with
+					| (prog_tail, st')::cstack' -> (cstack', stack, (State.leave st st', i, o)), prog_tail
+					| [] -> conf, []
+				)
+
+			| DROP -> (cstack, List.tl stack, c), prog_tail
+			
+			| DUP -> let hd::_ = stack in (cstack, hd::stack, c), prog_tail
+			
+			| SWAP -> let x::y::rest = stack in (cstack, y::x::rest, c), prog_tail
+			
+			| TAG s -> 
+				let sexp::tl = stack in 
+				let res = if s = Value.tag_of sexp then 1 else 0 in 
+				(cstack, (Value.of_int res)::tl, c), prog_tail
+			
+		  | ENTER es -> 
+				let vals, rest = split (List.length es) stack in
+				let evf = fun ast e var -> State.bind var e ast in
+				let st' = List.fold_left2 evf State.undefined vals es in 
+				(cstack, rest, (State.push st st' es, i, o)), prog_tail
+						
+			| LEAVE -> (cstack, stack, (State.drop st, i, o)), prog_tail
+		) in
+	  eval env cfg next;;
 
 (* Top-level evaluation
      val run : prg -> int list -> int list
    Takes a program, an input stream, and returns an output stream this program calculates
 *)
 let run p i =
+  (* print_prg p; *)
   let module M = Map.Make (String) in
   let rec make_map m = function
   | []              -> m
@@ -153,148 +170,191 @@ let run p i =
   in
   o
 
-class labels = 
-  object (self)
-    val counter = 0
-    method new_label = "label_" ^ string_of_int counter, {<counter = counter + 1>}
-  end 
-
-let func_label name = "L" ^ name
-
-let rec compile_body labels =
-  let rec compile_expr = function
-  | Expr.Var x -> [LD x]
-  | Expr.Const n -> [CONST n]
-  | Expr.Binop (op, x, y) -> compile_expr x @ compile_expr y @ [BINOP op]
-  | Expr.String s -> [STRING s]
-  | Expr.Array arr -> List.flatten (List.map compile_expr arr) @ [CALL ("$array", List.length arr, false)]
-  | Expr.Length t -> compile_expr t @ [CALL ("$length", 1, false)]
-  | Expr.Elem (arr, i) -> compile_expr arr @ compile_expr i @ [CALL ("$elem", 2, false)]
-  | Expr.Call (f, args) -> compile_call f args false
-  and compile_call f args p = 
-    let compiled_arglist = List.map compile_expr (List.rev args) in
-    let compiled_args = List.concat compiled_arglist in
-    compiled_args @ [CALL (func_label f, List.length args, p)]
-  in
-  function
-  | Stmt.Seq (a, b) -> 
-    let labelsa, resa = compile_body labels a in
-    let labelsb, resb = compile_body labelsa b in
-    labelsb, resa @ resb
-
-  | Stmt.Assign (x, [], e) -> labels, compile_expr e @ [ST x]
-
-  | Stmt.Assign (x, is, e) -> labels, List.flatten (List.map compile_expr (is @ [e])) @ [STA (x, List.length is)]
-
-  | Stmt.Skip -> labels, []
-
-  | Stmt.If (cond, then_body, else_body) ->
-    let compiled_cond = compile_expr cond in
-    let label_else, labels1 = labels#new_label in
-    let label_endif, labels2 = labels1#new_label in
-    let labels3, compiled_if = compile_body labels2 then_body in
-    let labels4, compiled_else = compile_body labels3 else_body in
-    labels4, compiled_cond @ 
-    [CJMP ("z", label_else)] @ 
-    compiled_if @ 
-    [JMP label_endif] @ 
-    [LABEL label_else] @ 
-    compiled_else @ 
-    [LABEL label_endif]
-
-  | Stmt.While (cond, while_body) ->
-    let compiled_cond = compile_expr cond in
-    let label_begin, labels1 = labels#new_label in
-    let label_end, labels2 = labels1#new_label in
-    let labels3, compiled_while_body = compile_body labels2 while_body in
-    labels3, 
-    [LABEL label_begin] @ 
-    compiled_cond @ 
-    [CJMP ("z", label_end)] @ 
-    compiled_while_body @ 
-    [JMP label_begin] @ 
-    [LABEL label_end] 
-
-  | Stmt.Repeat (repeat_body, cond) ->
-    let compiled_cond = compile_expr cond in
-    let label_begin, labels1 = labels#new_label in
-    let labels2, compiled_loop_body = compile_body labels1 repeat_body in
-    labels2, 
-    [LABEL label_begin] @ 
-    compiled_loop_body @ 
-    compiled_cond @ 
-    [CJMP ("z", label_begin)]
-
-  | Stmt.Call (f, args) -> 
-    labels, compile_call f args true
-    
-  | Stmt.Return res -> 
-    labels, 
-    (
-      match res with 
-      None -> [] 
-      | Some v -> compile_expr v
-    ) 
-    @ [RET (res <> None)]
-
-let compile_fun_def labels (fun_name, (args, locals, body)) = 
-  let end_label, labels1 = labels#new_label in
-  let labels2, compiled_fun = compile_body labels1 body in
-  labels2, 
-  [LABEL fun_name; BEGIN (fun_name, args, locals)] @ compiled_fun @ [LABEL end_label; END]
-
-let compile_all_defs labels defs = 
-  List.fold_left 
-  (
-    fun (labels, compiled_all_fun_defs) (fun_name, other_fun_names) -> 
-    let labels1, compiled_single_fun = compile_fun_def labels (func_label fun_name, other_fun_names) in 
-    labels1, compiled_single_fun::compiled_all_fun_defs
-  )
-  (labels, []) defs
-
 (* Stack machine compiler
      val compile : Language.t -> prg
    Takes a program in the source language and returns an equivalent program for the
    stack machine
 *)
-<<<<<<< HEAD
-let compile (defs, p) = let end_label, labels = (new labels)#new_label in
-  let labels1, compiled_prog = compile_body labels p in 
-  let labels2, compiled_all_fun_defs = compile_all_defs labels1 defs in
-  (compiled_prog @ [LABEL end_label]) @ [END] @ (List.concat compiled_all_fun_defs)
-=======
 let compile (defs, p) = 
   let label s = "L" ^ s in
-  let rec call f args p =
-    let args_code = List.concat @@ List.map expr args in
-    args_code @ [CALL (label f, List.length args, p)]
-  and pattern lfalse _ = failwith "Not implemented"
-  and bindings p = failwith "Not implemented"
-  and expr e = failwith "Not implemented" in
-  let rec compile_stmt l env stmt =  failwith "Not implemented" in
-  let compile_def env (name, (args, locals, stmt)) =
-    let lend, env       = env#get_label in
+	
+	let rec compile_call f args p =
+    let compiled_args = List.concat @@ List.map compile_expr args in
+    compiled_args @ [CALL (f, List.length args, p)]
+    and pattern p lfalse =
+    (
+			let rec compile_pattern patt =
+      (
+				match patt with
+					Stmt.Pattern.Wildcard -> [DROP]
+				| Stmt.Pattern.Ident x -> [DROP]
+				| Stmt.Pattern.Sexp (tag, ps) ->
+					let evf = 
+						(
+							fun (acc, pos) patt -> 
+							(acc @ [DUP; CONST pos; CALL (".elem", 2, false)] @ (compile_pattern patt)), pos + 1
+						) 
+					in
+					let res, _ = (List.fold_left evf ([], 0) ps) in
+					[DUP; TAG tag; CJMP ("z", lfalse)] @ res
+			) in 
+			compile_pattern p
+		)
+	
+	and compile_bindings p =
+    let rec bind cp = 
+      (match cp with
+        Stmt.Pattern.Wildcard -> 	[DROP]
+      | Stmt.Pattern.Ident x -> 	[SWAP]
+			| Stmt.Pattern.Sexp (_, xs) ->
+				let evf = 
+					(
+						fun (acc, pos) curp -> 
+						(acc @ [DUP; CONST pos; CALL (".elem", 2, false)] @ bind curp, pos + 1)
+					) 
+				in
+        let res, _ = List.fold_left evf ([], 0) xs in res @ [DROP]) in
+    bind p @ [ENTER (Stmt.Pattern.vars p)]
+	
+	and compile_expr e =
+		match e with
+		| Expr.Var x -> [LD x]
+		| Expr.Const n -> [CONST n]
+		| Expr.Binop (op, x, y) -> compile_expr x @ compile_expr y @ [BINOP op]
+		| Expr.String s -> [STRING s]
+		| Expr.Sexp (s, exprs) ->
+			let evf = (fun acc index -> acc @ (compile_expr index)) in
+			let args = List.fold_left evf [] exprs in args @ [SEXP (s, List.length exprs)]
+		| Expr.Array arr -> 
+			List.flatten (List.map compile_expr arr) @ [CALL (".array", List.length arr, false)]
+		| Expr.Length t -> compile_expr t @ [CALL (".length", 1, false)]
+		| Expr.Elem (arr, i) -> compile_expr arr @ compile_expr i @ [CALL (".elem", 2, false)]
+		| Expr.Call (f, args) -> compile_call (label f) args false in
+		
+  let rec compile_stmt l env stmt =
+    match stmt with
+		| Stmt.Assign (x, [], e) -> env, false, compile_expr e @ [ST x]
+		
+		| Stmt.Assign (x, is, e) -> 
+			let evf = (fun acc index -> acc @ (compile_expr index)) in
+			let indexes = List.fold_left evf [] is in 
+			env, false, (List.rev indexes @ compile_expr e @ [STA (x, List.length is)])
+			
+    | Stmt.Seq (left_st, right_st) ->
+      let env, _, left = compile_stmt l env left_st in
+      let env, _, right = compile_stmt l env right_st in
+			env, false, left @ right
+			
+		| Stmt.Skip -> env, false, []
+		
+    | Stmt.If (cond, then_body, else_body) ->
+      let else_label, env = env#new_label in
+      let end_label, env = env#new_label in
+      let env, _, then_case = compile_stmt l env then_body in
+      let env, _, else_case = compile_stmt l env else_body in
+			env, false, 
+			(compile_expr cond) @ 
+			[CJMP ("z", else_label)] @ 
+			then_case @ 
+			[JMP end_label] @ 
+			[LABEL else_label] @ 
+			else_case @ 
+			[LABEL end_label]
+			
+    | Stmt.While (cond, while_body) ->
+      let end_label, env = env#new_label in
+      let loop_label, env = env#new_label in
+      let env, _, compiled_body = compile_stmt l env while_body in
+			env, false, 
+			[JMP end_label] @ 
+			[LABEL loop_label] @ 
+			compiled_body @ 
+			[LABEL end_label] @ 
+			compile_expr cond @ 
+			[CJMP ("nz", loop_label)]
+			
+    | Stmt.Repeat (cond, repeat_body) ->
+      let loop_label, env = env#new_label in
+      let env, _, compiled_body = compile_stmt l env repeat_body in
+			env, false, 
+			[LABEL loop_label] @ 
+			compiled_body @ 
+			compile_expr cond @ 
+			[CJMP ("z", loop_label)]
+			
+		| Stmt.Return e -> 
+			(
+				match e with
+				| Some e -> env, false, compile_expr e @ [RET true]
+				| None -> env, false, [RET false]
+			)
+
+    | Stmt.Call (name, args) -> 
+			env, false, 
+			List.concat (List.map compile_expr args) @ 
+			[CALL ("L" ^ name, List.length args, true)]
+			
+    | Stmt.Case (e, patterns) ->
+      let rec compile_patterns ps env lbl is_first lend = 
+      (
+				match ps with
+        [] -> env, []
+        | (p, act)::tl -> 
+          let env, _, compiled_body = compile_stmt l env act in 
+          let lfalse, env = env#new_label
+          and start = if is_first then [] else [LABEL lbl] in
+          let env, code = compile_patterns tl env lfalse false lend in
+					env, start @ 
+					(pattern p lfalse) @ 
+					compile_bindings p @ 
+					compiled_body @ 
+					[LEAVE; JMP lend] @ code
+			) 
+			in
+      let lend, env = env#new_label in
+      let env, compiled_patterns = compile_patterns patterns env "" true lend in
+			env, false, 
+			(compile_expr e) @ 
+			compiled_patterns @ 
+			[LABEL lend]
+			
+		| Stmt.Leave -> env, false, [LEAVE] in
+		
+  let compile_fun_def env (name, (args, locals, stmt)) =
+    let lend, env       = env#new_label in
     let env, flag, code = compile_stmt lend env stmt in
     env,
     [LABEL name; BEGIN (name, args, locals)] @
     code @
-    (if flag then [LABEL lend] else []) @
-    [END]
+		(
+			if flag 
+			then [LABEL lend] 
+			else []
+		) 
+		@	[END]
+		
   in
   let env =
     object
-      val ls = 0
-      method get_label = (label @@ string_of_int ls), {< ls = ls + 1 >}
+      val counter = 0
+      method new_label = (label @@ string_of_int counter), {< counter = counter + 1 >}
     end
   in
-  let env, def_code =
-    List.fold_left
-      (fun (env, code) (name, others) -> let env, code' = compile_def env (label name, others) in env, code'::code)
-      (env, [])
-      defs
+	let env, compiled_functions =
+		let evf = 
+			(
+				fun (env, code) (name, others) -> 
+				let env, code' = compile_fun_def env (label name, others) in 
+				env, code'::code
+			) 
+		in
+    List.fold_left evf (env, []) defs
   in
-  let lend, env = env#get_label in
+  let lend, env = env#new_label in
   let _, flag, code = compile_stmt lend env p in
-  (if flag then code @ [LABEL lend] else code) @ [END] @ (List.concat def_code) 
-
->>>>>>> dcf275fda6eb350b2ff39f58182dfcda201cbef1
+	(
+		if flag 
+		then code @ [LABEL lend] 
+		else code
+	) 
+	@ [END] @ (List.concat compiled_functions) 
